@@ -2,7 +2,7 @@
 // CHANGE THE PINS LATER 
 const int INPUT_PIN = A0; 
 const int OUTPUT_PIN = 3;   // FIXED: DD3 is not valid, changed to 3
-const int POSTION = 4;      // FIXED: DD4 is not valid, changed to 4
+const int POSTION = A3;      // FIXED: DD4 is not valid, changed to 4
 const int button1 = 2;
 const int button2 = 5;      // FIXED: was 3, conflicted with OUTPUT_PIN
 const int button3 = 6;      // FIXED: was 4, conflicted with POSTION pin
@@ -13,6 +13,9 @@ double integral, previous, output = 0;
 double kp, ki, kd;
 double setpoint = 0.00;
 double rodEnd = 1023, rodBeginning = 0;  // FIXED: 'end' is a reserved word in C++, renamed to rodEnd/rodBeginning and given default values
+float prev_theta = 0;  
+float prev_pos   = 0;
+
 
 float M;  //mass of the cart 
 float g = 9.81; //gravitational accelaration 
@@ -29,9 +32,9 @@ void applyMotorPower(int pwm);     // ADDED: forward declaration was missing
 // ADDED: simple stub sensor functions so the code compiles.
 // Replace the body of each with your real sensor reading logic later.
 float getAngle()           { return (analogRead(A1) / 1023.0) * 360.0; }
-float getAngularVelocity() { return 0.0; }
+float getAngularVelocity(float theta);
 float getPosition()        { return analogRead(A2); }
-float getVelocity()        { return 0.0; }
+float getVelocity(float pos);
 
 
 void setup()
@@ -64,9 +67,9 @@ void loop()
   // FIXED: was missing '//' so it was not a comment, caused compile error
   // Get current states from sensors (IMU, Encoders, etc.)
   float theta = getAngle();
-  float theta_dot = getAngularVelocity();
+  float theta_dot = getAngularVelocity(theta);
   float pos = getPosition();    // FIXED: removed duplicate 'double pos' declaration below
-  float vel = getVelocity();
+  float vel = getVelocity(pos);
 
   //state of the buttons 
   int button1State = digitalRead(button1);
@@ -75,6 +78,8 @@ void loop()
   
   //reading the time in milliseconds 
   double now = millis();
+  dt = ( now - last_time)/1000.00;
+  last_time = now;
 
   //Calculate Control Input (u = -Kx)
   float u = -(K[0]*theta + K[1]*theta_dot + K[2]*pos + K[3]*vel);
@@ -91,9 +96,7 @@ void loop()
 
     //PID controller 
     if(button1State == HIGH){
-      dt = ( now - last_time)/1000.00;
-      last_time = now;
-
+      
       actual = map(analogRead(INPUT_PIN), 0, 1023, 0, 255);  // FIXED: 1024 -> 1023
       double error = setpoint - actual;
       output = pid(error);
@@ -166,9 +169,18 @@ void applyMotorPower(int pwm)
   }
 }
 
-double der(float theta , float pos)
+float getAngularVelocity(float theta)
 {
-  //calculate the direvative of the position and anguler 
-  
-
+  float dir = (theta - prev_theta) / dt;
+  prev_theta = theta;
+  return dir;
 }
+
+float getVelocity(float pos)
+{
+  float dir = (pos - prev_pos) / dt;
+  prev_pos = pos;
+  return dir;
+}
+
+
