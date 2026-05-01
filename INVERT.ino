@@ -3,9 +3,16 @@
 const int INPUT_PIN = A0; 
 const int OUTPUT_PIN = 3;   // FIXED: DD3 is not valid, changed to 3
 const int POSTION = A3;      // FIXED: DD4 is not valid, changed to 4
-const int button1 = 2;
+const int button1 = 9;
 const int button2 = 5;      // FIXED: was 3, conflicted with OUTPUT_PIN
 const int button3 = 6;      // FIXED: was 4, conflicted with POSTION pin
+const int MOTOR_PWM  = 3;   // PWM speed pin  (EN or PWM pin on your driver)
+const int MOTOR_IN1  = 7;   // Direction pin 1
+const int MOTOR_IN2  = 8;   // Direction pin 2
+
+
+const int ENC_A = 2;   // Encoder channel A — must be an interrupt pin
+const int ENC_B = 4;   // Encoder channel B
 
 
 double dt, last_time;
@@ -15,6 +22,8 @@ double setpoint = 0.00;
 double rodEnd = 1023, rodBeginning = 0;  // FIXED: 'end' is a reserved word in C++, renamed to rodEnd/rodBeginning and given default values
 float prev_theta = 0;  
 float prev_pos   = 0;
+
+volatile long encoderCount = 0;   // counts pulses; volatile because it is updated in an ISR
 
 
 float M;  //mass of the cart 
@@ -36,6 +45,13 @@ float getAngularVelocity(float theta);
 float getPosition()        { return analogRead(A2); }
 float getVelocity(float pos);
 
+void encoderISR() {
+  if (digitalRead(ENC_B) == HIGH) {
+    encoderCount++;    // forward rotation
+  } else {
+    encoderCount--;    // reverse rotation
+  }
+}
 
 void setup()
 {
@@ -50,8 +66,16 @@ void setup()
   pinMode(button2, INPUT);
   pinMode(button3, INPUT);
 
+  pinMode(MOTOR_PWM, OUTPUT);
+  pinMode(MOTOR_IN1, OUTPUT);
+  pinMode(MOTOR_IN2, OUTPUT);
+  pinMode(ENC_A, INPUT_PULLUP);   // encoder pin A with internal pull-up
+  pinMode(ENC_B, INPUT_PULLUP);   // encoder pin B with internal pull-up
+  attachInterrupt(digitalPinToInterrupt(ENC_A), encoderISR, RISING);  // attach ISR to channel A
+  analogWrite(MOTOR_PWM, 0);      // start with motor off
+
   Serial.begin(9600);
-  analogWrite(OUTPUT_PIN, 0);
+  
   for(int i = 0; i < 50; i++)
   {
     Serial.print(setpoint);
@@ -87,6 +111,9 @@ void loop()
   //mapping the position of the cart 
   // FIXED: removed 'double pos' re-declaration, now just reassigns the existing pos variable
   pos = map(analogRead(POSTION), 0, 1023, rodBeginning, rodEnd);  // FIXED: 1024 -> 1023 (analogRead max is 1023)
+  // NEW — use the encoder count directly:
+  //pos = encoderCount;   // raw pulse count; scale it later once you know your encoder resolution
+
 
   double actual = 0;  // ADDED: declared here so it is accessible for the Serial print below
 
@@ -102,7 +129,7 @@ void loop()
       output = pid(error);
 
       // output voltage to the motor 
-      analogWrite(OUTPUT_PIN, output);
+      applyMotorPower((int)output - 127);
     }
     
     //the lqr controller  
@@ -116,7 +143,7 @@ void loop()
     //the bang-bang controller 
     else if (button3State == HIGH){
       double output = bangbang(theta);
-      analogWrite(OUTPUT_PIN, output);
+      applyMotorPower((int)output - 127);
     }
 
     // Setpoint VS Actual
@@ -162,10 +189,22 @@ double bangbang(float theta)
 void applyMotorPower(int pwm)
 {
   int absPwm = abs(pwm);
-  if(pwm >= 0){
-    analogWrite(OUTPUT_PIN, absPwm);
-  } else {
-    analogWrite(OUTPUT_PIN, absPwm);  // swap direction pin logic here for your driver
+  absPwm = constrain(absPwm, 0, 255);   // safety clamp
+
+  if (pwm > 0) {
+    digitalWrite(MOTOR_IN1, HIGH);      // forward
+    digitalWrite(MOTOR_IN2, LOW);
+    analogWrite(MOTOR_PWM, absPwm);
+  }
+  else if (pwm < 0) {
+    digitalWrite(MOTOR_IN1, LOW);       // reverse — IN1/IN2 flipped
+    digitalWrite(MOTOR_IN2, HIGH);
+    analogWrite(MOTOR_PWM, absPwm);
+  }
+  else {
+    digitalWrite(MOTOR_IN1, LOW);       // brake / stop
+    digitalWrite(MOTOR_IN2, LOW);
+    analogWrite(MOTOR_PWM, 0);
   }
 }
 
@@ -182,5 +221,4 @@ float getVelocity(float pos)
   prev_pos = pos;
   return dir;
 }
-
 
