@@ -9,6 +9,8 @@ const int button3 = 6;      // FIXED: was 4, conflicted with POSTION pin
 const int MOTOR_PWM  = 3;   // PWM speed pin  (EN or PWM pin on your driver)
 const int MOTOR_IN1  = 7;   // Direction pin 1
 const int MOTOR_IN2  = 8;   // Direction pin 2
+const int LSR = 10;         //limitimg switch right tregger 
+const int LSL = 11;          //limiting switch left tregger 
 
 
 const int ENC_A = 2;   // Encoder channel A — must be an interrupt pin
@@ -74,6 +76,9 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(ENC_A), encoderISR, RISING);  // attach ISR to channel A
   analogWrite(MOTOR_PWM, 0);      // start with motor off
 
+  pinMode(LSR, INPUT);
+  pinMode(LSL, INPUT);
+
   Serial.begin(9600);
   
   for(int i = 0; i < 50; i++)
@@ -99,6 +104,21 @@ void loop()
   int button1State = digitalRead(button1);
   int button2State = digitalRead(button2);
   int button3State = digitalRead(button3);
+
+  //limitimg switch states 
+  int stateLimit_R = digitalRead(LSR);
+  int stateLimit_L = digitalRead(lSL);
+
+  //if the motor touches the right or the left switch it should move to the other direction
+  if(stateLimit_R == HIGH)
+  {
+    applyMotorPower(-10);
+  }
+  else if (stateLimit_L == HIGH)
+  {
+    applyMotorPower(10);
+  }
+
   
   //reading the time in milliseconds 
   double now = millis();
@@ -221,4 +241,5 @@ float getVelocity(float pos)
   prev_pos = pos;
   return dir;
 }
+
 
